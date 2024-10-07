@@ -75,7 +75,8 @@ sens = torch.LongTensor(sens)
 
 adj_ori = adj
 adj = normalize_scipy(adj)
-adj_poissoned = sp.load_npz('Path')
+# adj_poissoned = sp.load_npz('Path')
+adj_poissoned = sp.load_npz('evasion_structure/facebook_p_0.05_lp_0.05_prop_1_alpha_1.npz')
 
 if args.preprocessed_using:
     A_debiased, features = sp.load_npz('pre_processed/'+dataset+'_A_debiased_poisoning.npz'), torch.load("pre_processed/"+dataset+"_X_debiased_poisoning.pt", map_location=torch.device('cpu')).cpu().float()

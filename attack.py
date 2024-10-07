@@ -7,7 +7,7 @@ from torch.nn import functional as F
 from GFA import GFA
 from dataloading import load_data
 from surrogate import GCN
-from FAGNN import Fair_Attack
+# from FAGNN import Fair_Attack
 import random
 import pdb
 import os
