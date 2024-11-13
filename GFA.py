@@ -19,6 +19,111 @@ import pdb
 from numba import njit, prange
 import numba
 import pynvml
+import random
+
+# To be edited: evaluate the impact of changing the node attribute
+
+# Instead of edge_loop, we need a function that evaluates the impact of editing a node's attribute
+
+# We also need to rank node in order to select which node to edit first.
+# We can use "page rank" algorithm with graph spectrum (Yah!)
+
+# To that end, we also need to wrap it up with a select node function.
+
+def sigmoid(z):
+    return 1/(1 + np.exp(-z))
+
+# For here, we need to incorporate the depth of neural network, depth, so that we can only taken depth steps in updating.
+@njit(nopython=True)
+def attribute_loop(depth, attribute_set, node_selected, new_feature, Theta, B, AXT, XT, degree, Zlast, y, train_idx, test_idx, sens):
+    """
+    depth is the depth of neural network
+    """
+    num_modif = attribute_set.shape[0]
+
+    loss = np.zeros(num_modif)
+    fair = np.zeros(num_modif)
+
+    num_nodes = Zlast.shape[0]
+    # num_classes = Theta.shape[1] if Theta.ndim > 1 else 1
+
+    train_filt = np.zeros(num_nodes).astype(np.bool_)
+    test_filt = np.zeros(num_nodes).astype(np.bool_)
+
+    train_filt[train_idx] = True
+    test_filt[test_idx] = True
+
+    for i in range(train_idx.shape[0]):
+        train_filt[train_idx[i]] = True
+    for i in range(test_idx.shape[0]):
+        test_filt[test_idx[i]] = True
+
+    for k in range(depth):
+        # Spread the updated node attribute out
+        1
+
+    # How can I perform evaluation
+    for j in range(num_modif):
+
+        node, feature = attribute_set[j, 0], attribute_set[j, 1]
+
+        # Here, how can I compute the delta of node editing?
+
+        delta = -2 * XT[node] if XT[node] != 0 else 2  # Example flip logic for binary
+        Z_new = Zlast.copy()
+
+        Z_new[node] += delta
+
+        # Apply sigmoid function
+        Z_sm = sigmoid(Z_new)
+
+        # After that, we compute the binary cross-entrypy loss
+        # Assuming binary classification; adjust for multi-class as needed
+        # This means that we need to retrain the model?
+
+        loss_sum = 0.0
+        for i in range(train_idx.shape[0]):
+            idx = train_idx[i]
+            loss_sum += y[idx] * np.log(Z_sm[idx] + 1e-15) + (1 - y[idx]) * np.log(1 - Z_sm[idx] + 1e-15)
+
+
+        loss[j] = -loss_sum / train_idx.shape[0]
+
+        # Compute predictions for fairness loss
+
+        pred = Z_new >= 0
+        pos_group_0 = 0
+        pos_group_1 = 0
+        count_group_0 = 0
+        count_group_1 = 0
+
+        for i in range(test_idx.shape[0]):
+            idx = test_idx[i]
+            if sens[idx] == 0:
+                pos_group_0 += pred[idx]
+                count_group_0 += 1
+            else:
+                pos_group_1 += pred[idx]
+                count_group_1 += 1
+
+        # Here, parity?
+        if count_group_0 > 0 and count_group_1 > 0:
+            parity = np.abs((pos_group_0 / count_group_0) - (pos_group_1 / count_group_1))
+        else:
+            parity = 0.0
+        fair[j] = parity
+
+
+    return loss, fair
+
+# Randomly choose one node, implement the node choosing function in the future
+def choose_node(node_set):
+
+    size = (node_set.shape[0])
+
+    node_idx = random.randrange(0, size)
+
+    return edge_set[node_idx]
 
 
 @njit(nopython=True)
@@ -29,6 +134,8 @@ def edge_loop(edge_set, edge_coo, edge_ptr, AXT, XT, degree, Zlast, y, train_idx
     test_filt = np.zeros(AXT.shape[0]).astype(np.bool_)
     train_filt[train_idx] = True
     test_filt[test_idx] = True
+
+
     for j in range(edge_set.shape[0]):
         e = edge_set[j]
         N0_set_rm01 = set(edge_coo[1, edge_ptr[e[0]]:edge_ptr[e[0]+1]]) - set(e.astype(np.int_))
@@ -50,14 +157,14 @@ def edge_loop(edge_set, edge_coo, edge_ptr, AXT, XT, degree, Zlast, y, train_idx
             Z[e[1]] = (Zlast[e[1]] - AXT[e[1]] / np.square(degree[e[1]])) * degree[e[1]] / (degree[e[1]]+1) + (AXT[e[1]]+XT[e[0]]) / np.square(degree[e[1]]+1) + (AXT[e[0]]+XT[e[1]]) / (degree[e[1]]+1) / (degree[e[0]]+1)
         else:
             Z[e[1]] = (Zlast[e[1]] - AXT[e[1]] / np.square(degree[e[1]]) - AXT[e[0]] / degree[e[1]] / degree[e[0]]) * degree[e[1]] / (degree[e[1]]-1) + (AXT[e[1]]-XT[e[0]]) / np.square(degree[e[1]]-1)
-        
+
         for u in neighbor_0:
             Z[u] = Zlast[u] - AXT[e[0]] / degree[u] / degree[e[0]] + (AXT[e[0]] + (1 - 2*indicator)*XT[e[1]]) / degree[u] / (degree[e[0]] + 1 - 2*indicator)
         for u in neighbor_1:
             Z[u] = Zlast[u] - AXT[e[1]] / degree[u] / degree[e[1]] + (AXT[e[1]] + (1 - 2*indicator)*XT[e[0]]) / degree[u] / (degree[e[1]] + 1 - 2*indicator)
         for u in neighbor_both:
             Z[u] = Zlast[u] - AXT[e[0]] / degree[u] / degree[e[0]] - AXT[e[1]] / degree[u] / degree[e[1]] + (AXT[e[0]] + (1 - 2*indicator)*XT[e[1]]) / degree[u] / (degree[e[0]] + 1 - 2*indicator) + (AXT[e[1]] + (1 - 2*indicator)*XT[e[0]]) / degree[u] / (degree[e[1]] + 1 - 2*indicator)
-            
+
         Z_sm = 1 / (1 + np.exp(-Z))
         loss[j] = -(y[train_filt] * np.log(Z_sm[train_filt]) + (1 - y[train_filt]) * np.log(1 - Z_sm[train_filt])).mean()
         pred = Z[test_filt] >= 0
@@ -215,6 +322,45 @@ class GFA:
         print(f"best epoch: {best_result['epoch']}, best acc: {best_result['acc']:.4f}, parity: {best_result['parity']:.4f}, equality: {best_result['equality']:.4f} best pred 0: {best_result['pred0']}, best pred 1: {best_result['pred1']}")
         return output_return
 
+    def attribute_attack(self, p, loss_p, alpha, h, int_num, prop=1):
+
+        budget = int(self.adj_ori.sum() * p / 2)
+        print(budget)
+
+        self.adj_atk = self.adj_ori.copy()
+        total_perturbations = 0
+
+        _ = self.train_surrogate(alpha, h, int_num)
+
+        while total_perturbations < budget:
+            self.surrogate_model.zero_grad()
+            output = self.surrogate_model(self.x_atk)
+            loss = self.compute_loss(output)
+            loss.backward()
+            gradients = self.x_atk.grad.data
+
+            # Determine which features to modify
+            # For example, select the feature with the highest gradient magnitude
+            feature_to_modify = select_feature_based_on_gradient(gradients)
+
+            # Modify the selected feature
+            self.x_atk[feature_to_modify] += perturbation_amount
+            total_perturbations += 1
+
+            # Evaluate the attack
+            current_loss, current_fairness = self.evaluate_attack()
+
+            # Check if constraints are met
+            if current_loss - initial_loss > loss_p * initial_loss:
+                # Undo the last modification if loss constraint is violated
+                self.x_atk[feature_to_modify] -= perturbation_amount
+                break
+
+        # Save or return the attacked node features
+        self.save_attacked_features()
+
+
+
 
     def evasion_attack(self, p, loss_p, alpha, h, int_num, prop=1):
         budget = int(self.adj_ori.sum() * p / 2)
@@ -322,7 +468,7 @@ class GFA:
             assert (edge_ptr_check != edge_ptr).sum() == 0
             for i in range(self.N):
                 assert (edge_coo[0, edge_ptr[i]:edge_ptr[i+1]] != i).sum() == 0
-            
+
             pred = Zlast[self.test_idx] >= 0
             fair_cur = np.abs(pred[self.sens[self.test_idx] == 0].mean() - pred[self.sens[self.test_idx] == 1].mean())
             fair_last = fair_cur
@@ -337,7 +483,7 @@ class GFA:
             os.mkdir('evasion_structure')
         sp.save_npz('evasion_structure/'+self.dataset_name+'_p_'+str(p)+'_lp_'+str(loss_p)+'_prop_'+str(prop)+'_alpha_'+str(alpha)+'.npz', self.adj_atk)
         return best_fair
-    
+
 
     def poisoning_attack(self, p, loss_p, alpha, h, int_num, prop=1):
         budget = int(self.adj_ori.sum() * p / 2)
